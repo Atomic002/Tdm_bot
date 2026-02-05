@@ -533,6 +533,8 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def set_coins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Promo kod coin miqdorini o'zgartirish"""
+    global PROMO_COIN_AMOUNT
+
     if update.effective_user.id not in ADMIN_IDS:
         return
 
@@ -543,8 +545,6 @@ async def set_coins(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Misol: /set_coins 10"
         )
         return
-
-    global PROMO_COIN_AMOUNT
     PROMO_COIN_AMOUNT = int(context.args[0])
 
     db.collection('bot_config').document('settings').set(
