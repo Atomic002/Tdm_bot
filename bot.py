@@ -97,6 +97,30 @@ def is_admin(user_id):
     return user_id in ADMIN_IDS
 
 
+def is_valid_url(url):
+    """URL to'g'ri formatda ekanligini tekshirish"""
+    if not url:
+        return False
+    url = url.strip()
+    if not url.startswith('http'):
+        url = 'https://' + url
+    # URL da < > bo'sh joy yoki maxsus belgilar bo'lmasligi kerak
+    if '<' in url or '>' in url or ' ' in url:
+        return False
+    # Kamida domen bo'lishi kerak
+    if '.' not in url and '+' not in url:
+        return False
+    return True
+
+
+def fix_url(url):
+    """URL ni to'g'rilash"""
+    url = url.strip()
+    if not url.startswith('http'):
+        url = 'https://' + url
+    return url
+
+
 # ============================================================
 # USER HANDLERLARI
 # ============================================================
@@ -155,22 +179,16 @@ async def show_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = []
     for ch in channels:
-        url = ch.get('url', '').strip()
-        if not url.startswith('http'):
-            url = 'https://' + url
+        url = ch.get('url', '')
+        if not is_valid_url(url):
+            print(f"[TASKS] Noto'g'ri URL o'tkazib yuborildi: {url}")
+            continue
+        url = fix_url(url)
         keyboard.append([InlineKeyboardButton("Obuna bo'ling", url=url)])
 
     keyboard.append([InlineKeyboardButton("A'zo bo'ldim ✅", callback_data="check_subs")])
 
-    try:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    except Exception as e:
-        print(f"[TASKS] Keyboard xato: {e}")
-        text += "\n\nKanallar:\n"
-        for i, ch in enumerate(channels, 1):
-            text += f"{i}. {ch['name']} - {ch.get('url', '')}\n"
-        text += "\nObuna bo'lgandan keyin /start bosing!"
-        await update.message.reply_text(text)
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def check_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -221,17 +239,14 @@ async def check_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         keyboard = []
         for ch in channels:
-            url = ch.get('url', '').strip()
-            if not url.startswith('http'):
-                url = 'https://' + url
+            url = ch.get('url', '')
+            if not is_valid_url(url):
+                continue
+            url = fix_url(url)
             keyboard.append([InlineKeyboardButton("Obuna bo'ling", url=url)])
         keyboard.append([InlineKeyboardButton("A'zo bo'ldim ✅", callback_data="check_subs")])
 
-        try:
-            await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-        except Exception as e:
-            print(f"[CHECK] Keyboard xato: {e}")
-            await query.message.reply_text("Xatolik. Qayta /start bosing.")
+        await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     # Hammasi OK - promo kod berish
