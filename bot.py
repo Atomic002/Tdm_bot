@@ -42,7 +42,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
 ADMIN_IDS = [6768934631]
 
-PROMO_COIN_AMOUNT = 5
+PROMO_COIN_AMOUNT = 20
 
 
 # ============================================================
