@@ -2,12 +2,33 @@ import os
 import json
 import string
 import random
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import firebase_admin
 from firebase_admin import credentials, firestore
+
+
+# ============================================================
+# HEALTH CHECK SERVER (Koyeb/Render uchun)
+# ============================================================
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        pass  # Loglarni yashirish
+
+def start_health_server():
+    port = int(os.getenv("PORT", 8000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    server.serve_forever()
 
 # .env fayldan o'qish
 load_dotenv()
@@ -562,6 +583,11 @@ async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 def main():
+    # Health check serverni alohida threadda ishga tushirish
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+    print(f"🌐 Health server ishga tushdi (port {os.getenv('PORT', 8000)})")
+
     app = Application.builder().token(BOT_TOKEN).build()
 
     # Foydalanuvchi buyruqlari
