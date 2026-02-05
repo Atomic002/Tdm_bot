@@ -123,74 +123,70 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Oddiy userga vazifalarni ko'rsatish"""
+    user = update.effective_user
+    channels = get_channels()
+    task_version = get_task_version()
+
+    print(f"[TASKS] User: {user.id}, Channels: {len(channels)}, Version: {task_version}")
+
+    # Foydalanuvchi allaqachon bajarganmi
     try:
-        user = update.effective_user
-        channels = get_channels()
-        task_version = get_task_version()
+        user_doc = db.collection('bot_users').document(str(user.id)).get()
+        if user_doc.exists:
+            data = user_doc.to_dict()
+            if data.get('completed_version') == task_version:
+                await update.message.reply_text(
+                    f"Siz barcha vazifalarni bajargansiz!\n\n"
+                    f"Promo kodingiz: `{data.get('last_code', 'N/A')}`\n\n"
+                    f"Bu kodni TDM Training ilovasiga kiriting va coin oling!",
+                    parse_mode='Markdown'
+                )
+                return
+    except Exception as e:
+        print(f"[TASKS] User doc xato: {e}")
 
-        print(f"[TASKS] User: {user.id}, Channels: {len(channels)}, Version: {task_version}")
-
-        # Foydalanuvchi allaqachon bajarganmi
-        try:
-            user_doc = db.collection('bot_users').document(str(user.id)).get()
-            if user_doc.exists:
-                data = user_doc.to_dict()
-                if data.get('completed_version') == task_version:
-                    await update.message.reply_text(
-                        f"Siz barcha vazifalarni bajargansiz!\n\n"
-                        f"Promo kodingiz: `{data.get('last_code', 'N/A')}`\n\n"
-                        f"Bu kodni TDM Training ilovasiga kiriting va coin oling!",
-                        parse_mode='Markdown'
-                    )
-                    return
-        except Exception as e:
-            print(f"[TASKS] User doc xato: {e}")
-
-        if not channels:
-            await update.message.reply_text(
-                f"Salom, {user.first_name}!\n\n"
-                f"Hozircha vazifalar yo'q.\n"
-                f"Keyinroq qaytib keling!"
-            )
-            return
-
-        text = (
+    if not channels:
+        await update.message.reply_text(
             f"Salom, {user.first_name}!\n\n"
-            f"Quyidagi kanallarga obuna bo'ling va\n"
-            f"promo kod oling!\n\n"
-            f"Kanallar soni: {len(channels)}\n"
-            f"Mukofot: {PROMO_COIN_AMOUNT} coin"
+            f"Hozircha vazifalar yo'q.\n"
+            f"Keyinroq qaytib keling!"
         )
+        return
 
-        keyboard = []
-        for i, ch in enumerate(channels, 1):
-            url = ch.get('url', '').strip()
-            # URL ni tekshirish - faqat http/https bilan boshlanishi kerak
-            if not url.startswith('http'):
-                url = 'https://' + url
-            ch_type = ch.get('type', 'channel')
-            if ch_type == 'request':
-                label = f"{i}. {ch['name']} (so'rov)"
-            elif ch_type == 'link':
-                label = f"{i}. {ch['name']}"
-            else:
-                label = f"{i}. {ch['name']}"
-            try:
-                keyboard.append([InlineKeyboardButton(label, url=url)])
-            except Exception as e:
-                print(f"[TASKS] Tugma yaratishda xato ({url}): {e}")
+    text = (
+        f"Salom, {user.first_name}!\n\n"
+        f"Quyidagi kanallarga obuna bo'ling va\n"
+        f"promo kod oling!\n\n"
+        f"Kanallar soni: {len(channels)}\n"
+        f"Mukofot: {PROMO_COIN_AMOUNT} coin"
+    )
 
-        keyboard.append([InlineKeyboardButton("Tekshirish", callback_data="check_subs")])
+    # Keyboard yaratish
+    keyboard = []
+    for i, ch in enumerate(channels, 1):
+        url = ch.get('url', '').strip()
+        if not url.startswith('http'):
+            url = 'https://' + url
+        ch_type = ch.get('type', 'channel')
+        if ch_type == 'request':
+            label = f"{i}. {ch['name']} (so'rov)"
+        else:
+            label = f"{i}. {ch['name']}"
+        keyboard.append([InlineKeyboardButton(label, url=url)])
 
+    keyboard.append([InlineKeyboardButton("Tekshirish", callback_data="check_subs")])
+
+    # Yuborishga urinish - agar URL xato bo'lsa, tugmasiz yuborish
+    try:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     except Exception as e:
-        print(f"[TASKS ERROR] {e}")
-        try:
-            await update.message.reply_text(
-                f"Salom! Hozircha vazifalar yo'q.\nKeyinroq qaytib keling!"
-            )
-        except:
-            pass
+        print(f"[TASKS] Keyboard bilan yuborishda xato: {e}")
+        # URL lari xato - kanallarni matn sifatida ko'rsatish
+        text += "\n\nKanallar:\n"
+        for i, ch in enumerate(channels, 1):
+            text += f"{i}. {ch['name']} - {ch.get('url', '')}\n"
+        text += "\nObuna bo'lgandan keyin /start bosing!"
+        await update.message.reply_text(text)
 
 
 async def check_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -250,17 +246,19 @@ async def check_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE
             ch_type = ch.get('type', 'channel')
             if ch_type == 'request':
                 label = f"{i}. {ch['name']} (so'rov)"
-            elif ch_type == 'link':
-                label = f"{i}. {ch['name']}"
             else:
                 label = f"{i}. {ch['name']}"
-            try:
-                keyboard.append([InlineKeyboardButton(label, url=url)])
-            except Exception:
-                pass
+            keyboard.append([InlineKeyboardButton(label, url=url)])
         keyboard.append([InlineKeyboardButton("Tekshirish", callback_data="check_subs")])
 
-        await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        try:
+            await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            print(f"[CHECK] Keyboard xato: {e}")
+            text += "\n\nKanallar:\n"
+            for i, ch in enumerate(channels, 1):
+                text += f"{i}. {ch['name']} - {ch.get('url', '')}\n"
+            await query.message.reply_text(text)
         return
 
     # Hammasi OK - promo kod berish
@@ -613,6 +611,16 @@ async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ch_id = args[1]
     ch_name = args[2].replace('_', ' ')
     ch_url = args[3]
+
+    # URL tekshirish
+    if not ch_url.startswith('http'):
+        ch_url = 'https://' + ch_url
+
+    if ch_type not in ['channel', 'request', 'link']:
+        await update.message.reply_text(
+            "Tur noto'g'ri! Faqat: channel, request, link"
+        )
+        return
 
     channels = get_channels()
     channels.append({
