@@ -102,69 +102,95 @@ def is_admin(user_id):
 # ============================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
+    try:
+        user = update.effective_user
+        print(f"[START] User: {user.id} - {user.first_name} - Admin: {is_admin(user.id)}")
 
-    # Admin bo'lsa - admin panel ko'rsatish
-    if is_admin(user.id):
-        await show_admin_panel(update, context)
-        return
+        # Admin bo'lsa - admin panel ko'rsatish
+        if is_admin(user.id):
+            await show_admin_panel(update, context)
+            return
 
-    # Oddiy user - vazifalarni ko'rsatish
-    await show_tasks(update, context)
+        # Oddiy user - vazifalarni ko'rsatish
+        await show_tasks(update, context)
+    except Exception as e:
+        print(f"[START ERROR] {e}")
+        try:
+            await update.message.reply_text("Xatolik yuz berdi. Qayta /start bosing.")
+        except:
+            pass
 
 
 async def show_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Oddiy userga vazifalarni ko'rsatish"""
-    user = update.effective_user
-    channels = get_channels()
-    task_version = get_task_version()
-
-    # Foydalanuvchi allaqachon bajarganmi
     try:
-        user_doc = db.collection('bot_users').document(str(user.id)).get()
-        if user_doc.exists:
-            data = user_doc.to_dict()
-            if data.get('completed_version') == task_version:
-                await update.message.reply_text(
-                    f"Siz barcha vazifalarni bajargansiz!\n\n"
-                    f"Promo kodingiz: `{data.get('last_code', 'N/A')}`\n\n"
-                    f"Bu kodni TDM Training ilovasiga kiriting va coin oling!",
-                    parse_mode='Markdown'
-                )
-                return
-    except Exception as e:
-        print(f"User tekshirishda xato: {e}")
+        user = update.effective_user
+        channels = get_channels()
+        task_version = get_task_version()
 
-    if not channels:
-        await update.message.reply_text(
+        print(f"[TASKS] User: {user.id}, Channels: {len(channels)}, Version: {task_version}")
+
+        # Foydalanuvchi allaqachon bajarganmi
+        try:
+            user_doc = db.collection('bot_users').document(str(user.id)).get()
+            if user_doc.exists:
+                data = user_doc.to_dict()
+                if data.get('completed_version') == task_version:
+                    await update.message.reply_text(
+                        f"Siz barcha vazifalarni bajargansiz!\n\n"
+                        f"Promo kodingiz: `{data.get('last_code', 'N/A')}`\n\n"
+                        f"Bu kodni TDM Training ilovasiga kiriting va coin oling!",
+                        parse_mode='Markdown'
+                    )
+                    return
+        except Exception as e:
+            print(f"[TASKS] User doc xato: {e}")
+
+        if not channels:
+            await update.message.reply_text(
+                f"Salom, {user.first_name}!\n\n"
+                f"Hozircha vazifalar yo'q.\n"
+                f"Keyinroq qaytib keling!"
+            )
+            return
+
+        text = (
             f"Salom, {user.first_name}!\n\n"
-            f"Hozircha vazifalar yo'q.\n"
-            f"Keyinroq qaytib keling!"
+            f"Quyidagi kanallarga obuna bo'ling va\n"
+            f"promo kod oling!\n\n"
+            f"Kanallar soni: {len(channels)}\n"
+            f"Mukofot: {PROMO_COIN_AMOUNT} coin"
         )
-        return
 
-    text = (
-        f"Salom, {user.first_name}!\n\n"
-        f"Quyidagi kanallarga obuna bo'ling va\n"
-        f"promo kod oling!\n\n"
-        f"Kanallar soni: {len(channels)}\n"
-        f"Mukofot: {PROMO_COIN_AMOUNT} coin"
-    )
+        keyboard = []
+        for i, ch in enumerate(channels, 1):
+            url = ch.get('url', '').strip()
+            # URL ni tekshirish - faqat http/https bilan boshlanishi kerak
+            if not url.startswith('http'):
+                url = 'https://' + url
+            ch_type = ch.get('type', 'channel')
+            if ch_type == 'request':
+                label = f"{i}. {ch['name']} (so'rov)"
+            elif ch_type == 'link':
+                label = f"{i}. {ch['name']}"
+            else:
+                label = f"{i}. {ch['name']}"
+            try:
+                keyboard.append([InlineKeyboardButton(label, url=url)])
+            except Exception as e:
+                print(f"[TASKS] Tugma yaratishda xato ({url}): {e}")
 
-    keyboard = []
-    for i, ch in enumerate(channels, 1):
-        ch_type = ch.get('type', 'channel')
-        if ch_type == 'request':
-            label = f"{i}. {ch['name']} (so'rov)"
-        elif ch_type == 'link':
-            label = f"{i}. {ch['name']}"
-        else:
-            label = f"{i}. {ch['name']}"
-        keyboard.append([InlineKeyboardButton(label, url=ch['url'])])
+        keyboard.append([InlineKeyboardButton("Tekshirish", callback_data="check_subs")])
 
-    keyboard.append([InlineKeyboardButton("Tekshirish", callback_data="check_subs")])
-
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    except Exception as e:
+        print(f"[TASKS ERROR] {e}")
+        try:
+            await update.message.reply_text(
+                f"Salom! Hozircha vazifalar yo'q.\nKeyinroq qaytib keling!"
+            )
+        except:
+            pass
 
 
 async def check_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -218,6 +244,9 @@ async def check_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         keyboard = []
         for i, ch in enumerate(channels, 1):
+            url = ch.get('url', '').strip()
+            if not url.startswith('http'):
+                url = 'https://' + url
             ch_type = ch.get('type', 'channel')
             if ch_type == 'request':
                 label = f"{i}. {ch['name']} (so'rov)"
@@ -225,7 +254,10 @@ async def check_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE
                 label = f"{i}. {ch['name']}"
             else:
                 label = f"{i}. {ch['name']}"
-            keyboard.append([InlineKeyboardButton(label, url=ch['url'])])
+            try:
+                keyboard.append([InlineKeyboardButton(label, url=url)])
+            except Exception:
+                pass
         keyboard.append([InlineKeyboardButton("Tekshirish", callback_data="check_subs")])
 
         await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -747,12 +779,20 @@ async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # MAIN
 # ============================================================
 
+async def error_handler(update, context):
+    """Xatolarni ushlash va log qilish"""
+    print(f"[ERROR] {context.error}")
+
+
 def main():
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
     print(f"Health server ishga tushdi (port {os.getenv('PORT', 8000)})")
 
     app = Application.builder().token(BOT_TOKEN).build()
+
+    # Error handler
+    app.add_error_handler(error_handler)
 
     # User buyruqlari
     app.add_handler(CommandHandler("start", start))
@@ -770,7 +810,7 @@ def main():
     app.add_handler(CommandHandler("user_info", user_info))
 
     print("Bot ishga tushdi!")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
